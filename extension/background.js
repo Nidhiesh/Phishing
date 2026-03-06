@@ -122,14 +122,18 @@ async function handleScamCheck(request, sender, sendResponse) {
         
         console.log(`[Background] Detection result:`, result);
         
-        // Send alert to content script if scam detected
-        if (result.risk_level !== 'safe') {
+        // For WhatsApp: Only alert if message matches training patterns
+        const shouldAlert = result.matches_training_patterns === true && result.risk_level !== 'safe';
+        
+        // Send alert to content script if scam detected AND matches training data
+        if (shouldAlert) {
             chrome.tabs.sendMessage(sender.tab.id, {
                 type: 'SHOW_WARNING',
                 status: result.risk_level,
                 confidence: result.confidence,
                 threats: result.threats,
-                checkId: result.check_id
+                checkId: result.check_id,
+                matchesTrainingData: result.matches_training_patterns
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     console.log('Content script not ready yet');
@@ -142,7 +146,8 @@ async function handleScamCheck(request, sender, sendResponse) {
             type: result.risk_level === 'safe' ? 'MESSAGE_SAFE' : 'SCAM_DETECTED',
             status: result.risk_level,
             confidence: result.confidence,
-            threats: result.threats
+            threats: result.threats,
+            matchesTrainingData: result.matches_training_patterns
         });
         
     } catch (error) {
@@ -152,45 +157,71 @@ async function handleScamCheck(request, sender, sendResponse) {
     }
 }
 
-// Fallback keyword detection (when backend is offline)
+// Fallback keyword detection (when backend is offline) - STRICT mode for WhatsApp
 function fallbackDetection(message) {
-    const keywords = {
-        critical: ['otp', 'verify account', 'confirm identity', 'update payment'],
-        high: ['urgent', 'immediately', 'suspended', 'verify', 'confirm'],
-        medium: ['click', 'download', 'link']
+    // Training data patterns from backend
+    const trainingPatterns = {
+        // High-confidence patterns (from training data)
+        criticalOTP: ['verify your otp', 'enter your otp', 'confirm your otp', 'one time password', 'enter otp'],
+        criticalVerify: ['verify account', 'confirm identity', 'verify now', 'confirm account'],
+        criticalPayment: ['update payment', 'verify credit card', 'billing information', 'payment method', 'bank account', 'cvv'],
+        criticalPrize: ['congratulations won', 'claim prize', 'lottery', 'grand prize', 'free money'],
+        criticalUrgent: ['account will be suspended', 'account compromised', 'account locked', 'action required immediately', 'unusual login detected'],
+        criticalLink: ['bit.ly', 'tinyurl', 'goo.gl', 'ow.ly', 'short.link', 'ow.ly/secure'],
+        criticalBank: ['your bank', 'bank alert', 'suspected fraud', 'unusual activity'],
+        criticalImitation: ['this is your bank', 'amazon security', 'google alert', 'facebook confirm', 'instagram unusual', 'whatsapp security'],
+        criticalDownload: ['download security update', 'install app', 'download cleaner', 'critical update', 'system scan']
     };
     
-    let score = 0;
-    const threats = [];
+    let matchCount = 0;
+    const matchedPatterns = [];
     const msgLower = message.toLowerCase();
     
-    for (const word of keywords.critical) {
-        if (msgLower.includes(word)) {
-            score += 30;
-            threats.push(word);
+    // Count how many training patterns match
+    for (const [patternType, patterns] of Object.entries(trainingPatterns)) {
+        for (const pattern of patterns) {
+            if (msgLower.includes(pattern)) {
+                matchCount++;
+                matchedPatterns.push(patternType.replace('critical', ''));
+                break; // Count each pattern type only once
+            }
         }
     }
     
-    for (const word of keywords.high) {
-        if (msgLower.includes(word)) {
-            score += 15;
-            if (!threats.includes(word)) threats.push(word);
+    // Only flag if multiple training patterns match (at least 2)
+    // This ensures we only alert on messages similar to training data
+    if (matchCount >= 2) {
+        return {
+            type: 'SCAM_DETECTED',
+            status: 'scam',
+            confidence: Math.min(0.7 + (matchCount * 0.1), 1.0),
+            threats: matchedPatterns.slice(0, 3),
+            matchesTrainingData: true
+        };
+    }
+    
+    // Single minor pattern match - flag as suspicious only if very specific
+    if (matchCount === 1) {
+        // Only certain types warrant suspicious flag alone
+        const soloSuspiciousPatterns = ['OTP', 'Verify', 'Payment', 'Link', 'Bank', 'Imitation'];
+        if (soloSuspiciousPatterns.some(p => matchedPatterns.some(m => m.includes(p)))) {
+            return {
+                type: 'SCAM_DETECTED',
+                status: 'suspicious',
+                confidence: 0.5,
+                threats: matchedPatterns,
+                matchesTrainingData: true
+            };
         }
     }
     
-    // Check for URL shorteners
-    if (/(bit\.ly|tinyurl|goo\.gl|ow\.ly)/i.test(message)) {
-        score += 20;
-        threats.push('suspicious URL');
-    }
-    
-    const riskLevel = score >= 50 ? 'scam' : score >= 25 ? 'suspicious' : 'safe';
-    
+    // Safe - no training patterns match or insufficient matches
     return {
-        type: riskLevel === 'safe' ? 'MESSAGE_SAFE' : 'SCAM_DETECTED',
-        status: riskLevel,
-        confidence: Math.min(score / 100, 1.0),
-        threats: threats.slice(0, 3)
+        type: 'MESSAGE_SAFE',
+        status: 'safe',
+        confidence: 0.0,
+        threats: [],
+        matchesTrainingData: false
     };
 }
 

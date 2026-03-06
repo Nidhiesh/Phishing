@@ -114,10 +114,13 @@ def detect():
         
         scam_probability = probability[1]
         
-        # Determine risk level
-        if scam_probability >= 0.7:
+        # Check if message matches training data patterns (high confidence match)
+        matches_training_patterns = scam_probability >= 0.6
+        
+        # Determine risk level (stricter for real-world deployment)
+        if scam_probability >= 0.75:
             risk_level = 'scam'
-        elif scam_probability >= 0.4:
+        elif scam_probability >= 0.5:
             risk_level = 'suspicious'
         else:
             risk_level = 'safe'
@@ -138,6 +141,7 @@ def detect():
             'confidence': float(scam_probability),
             'risk_level': risk_level,
             'threats': threats,
+            'matches_training_patterns': matches_training_patterns,
             'check_id': f"CHK_{stats['total_checks']:06d}",
             'timestamp': datetime.now().isoformat()
         }

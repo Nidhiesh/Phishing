@@ -1,17 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Cyber Shield - ML Scam Detector",
-  "version": "3.0",
-  "description": "AI-powered scam detection that automatically checks all messages and emails in real-time",
+  "version": "3.2",
+  "description": "AI-powered scam detection matching training dataset patterns on WhatsApp Web, Gmail, Instagram with high precision",
   
   "permissions": [
     "activeTab",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   
   "host_permissions": [
     "*://*.whatsapp.com/*",
+    "*://web.whatsapp.com/*",
     "*://*.instagram.com/*",
     "*://*.mail.google.com/*",
     "*://mail.google.com/*"

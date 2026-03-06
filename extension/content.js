@@ -72,15 +72,27 @@ function monitorWhatsApp() {
     }
     
     try {
+        // Monitor for message bubbles with multiple selector strategies
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === 1) { // Element node
-                        // Find new messages in the DOM
-                        const messages = node.querySelectorAll('[data-testid="msg-container"], [data-testid="message"]');
+                        // Find new messages using multiple strategies for different WhatsApp Web versions
+                        const messages = node.querySelectorAll(
+                            '[data-testid="msg-container"], '
+                            + '[data-testid="message"], '
+                            + '[role="article"][data-testid], '
+                            + '.message, '
+                            + '[class*="message"]:not([class*="message-input"])'
+                        );
                         messages.forEach(msg => {
                             analyzeMessage(msg, 'whatsapp');
                         });
+                        
+                        // Also check direct message elements
+                        if (node.classList && node.classList.contains('message-in') || node.classList.contains('message-out')) {
+                            analyzeMessage(node, 'whatsapp');
+                        }
                     }
                 });
             });
@@ -92,11 +104,28 @@ function monitorWhatsApp() {
             subtree: true
         });
 
-        // Also check existing messages after page loads
+        // Check existing messages after page loads
         setTimeout(() => {
-            const existing = document.querySelectorAll('[data-testid="msg-container"]');
+            const existing = document.querySelectorAll(
+                '[data-testid="msg-container"], '
+                + '[role="article"][data-testid], '
+                + '.message.message-in, '
+                + '.message.message-out'
+            );
+            console.log(`📱 Found ${existing.length} existing WhatsApp messages to scan`);
             existing.forEach(msg => analyzeMessage(msg, 'whatsapp'));
-        }, 2000);
+        }, 1000);
+        
+        // Periodically rescan for any missed messages
+        setInterval(() => {
+            const allMessages = document.querySelectorAll('[data-testid="msg-container"]');
+            allMessages.forEach(msg => {
+                if (!msg.hasAttribute('data-shield-checked')) {
+                    analyzeMessage(msg, 'whatsapp');
+                    msg.setAttribute('data-shield-checked', 'true');
+                }
+            });
+        }, 5000);
         
         console.log('✓ WhatsApp Web monitoring started');
     } catch (error) {
@@ -214,7 +243,13 @@ function analyzeMessage(element, platform) {
             }
 
             if (response && response.type === 'SCAM_DETECTED') {
-                console.log('⚠ SCAM DETECTED:', response);
+                // For WhatsApp: ONLY show alert if message matches training dataset patterns
+                if (platform === 'whatsapp' && response.matchesTrainingData !== true) {
+                    console.log(`[${platform}] Message flagged but does NOT match training data - skipping alert`);
+                    return;
+                }
+                
+                console.log(`⚠️ [${platform}] SCAM DETECTED:`, response);
                 
                 // Highlight the suspicious message
                 element.style.backgroundColor = 'rgba(255, 193, 7, 0.15)';
@@ -234,19 +269,32 @@ function extractText(element, platform) {
     let text = '';
 
     if (platform === 'whatsapp') {
-        // Try WhatsApp selectors
+        // Try WhatsApp selectors (multiple strategies for different versions)
         const selectors = [
             '[class*="selectable-text"]',
-            '[data-testid="msg-text"]'
+            '[data-testid="msg-text"]',
+            'span[dir="auto"][style*="word-wrap"]',
+            '.selectable-text',
+            '[role="img"][alt]',  // For images with alt text
+            '.copyable-text'
         ];
         for (let selector of selectors) {
             const el = element.querySelector(selector);
             if (el) {
-                text = el.innerText || el.textContent;
-                if (text) break;
+                text = el.innerText || el.textContent || el.alt || el.getAttribute('aria-label');
+                if (text && text.trim().length > 2) break;
             }
         }
-        if (!text) text = element.innerText;
+        // Fallback: extract all text from the message container
+        if (!text) {
+            text = element.innerText;
+        }
+        
+        // Also check for URLs that might be in href attributes
+        const links = element.querySelectorAll('a[href]');
+        if (links.length > 0 && text.length < 10) {
+            text = Array.from(links).map(l => l.href).join(' ') + ' ' + (text || '');
+        }
     }
     else if (platform === 'gmail') {
         // Try Gmail selectors
@@ -284,21 +332,25 @@ function addBadge(element, status) {
 
     const badge = document.createElement('div');
     badge.className = 'cyber-shield-badge';
+    const bgColor = status === 'scam' ? '#ff4444' : '#ff9800';
+    const borderColor = status === 'scam' ? '#cc0000' : '#ff6600';
+    const label = status === 'scam' ? '⚠️ SCAM' : '⚠️ SUSPICIOUS';
+    
     badge.style.cssText = `
         position: absolute;
         top: 5px;
         right: 5px;
-        background: ${status === 'scam' ? '#FF6B6B' : '#FFC107'};
+        background: ${bgColor};
         color: white;
-        padding: 4px 8px;
+        padding: 5px 10px;
         border-radius: 4px;
-        font-size: 12px;
+        border: 2px solid ${borderColor};
+        font-size: 11px;
         font-weight: bold;
         z-index: 1000;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     `;
-    
-    badge.textContent = status === 'scam' ? '⚠️ SCAM' : '⚠️ SUSPICIOUS';
+    badge.textContent = label;
     element.style.position = 'relative';
     element.appendChild(badge);
 }
@@ -395,13 +447,13 @@ function showWarning(data) {
         setTimeout(() => popup.remove(), 400);
     });
 
-    // Auto close after 15 seconds
+    // Auto close after 5 seconds
     setTimeout(() => {
         if (popup.parentNode) {
             popup.style.animation = 'slideIn 0.4s ease-out reverse';
             setTimeout(() => popup.remove(), 400);
         }
-    }, 15000);
+    }, 5000);
 }
 
 console.log('✓ Cyber Shield ready and monitoring');

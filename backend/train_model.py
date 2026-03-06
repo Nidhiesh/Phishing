@@ -23,6 +23,7 @@ SCAM_MESSAGES = [
     "Urgent: Verify OTP for account security",
     "Your OTP expires in 10 minutes - confirm now",
     
+    
     # Payment/Banking Scams
     "Update your payment method to continue using services",
     "Your bank account has been compromised - verify now",
@@ -35,6 +36,26 @@ SCAM_MESSAGES = [
     "Update banking information urgently required",
     "Credit card declined - enter details again",
     "Bank account verification needed immediately",
+    "http://secure-payment-update-account.com",
+"http://bank-verification-alert-login.net",
+"http://transaction-secure-check.xyz",
+"http://card-security-update.click",
+"http://payment-method-update-now.top",
+"http://secure-bank-login-verification.ru",
+"http://payment-confirmation-check.site",
+"http://bank-account-verify-now.click",
+"http://update-bank-info-secure.xyz",
+"http://card-payment-verification.top",
+"http://bank-alert-login-check.click",
+"http://service-payment-update.net",
+"http://bank-login-authentication.xyz",
+"http://secure-transaction-confirmation.click",
+"http://payment-secure-check.top",
+"http://bank-account-warning-check.site",
+"http://secure-payment-update-alert.xyz",
+"http://bank-security-confirmation.click",
+"http://card-payment-check.top",
+"http://account-security-verification.net",
     
     # Prize/Lottery Scams
     "Congratulations! You won 50000 rupees in our lottery",
